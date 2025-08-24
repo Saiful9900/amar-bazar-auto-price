@@ -22,8 +22,8 @@ jobs:
         run: npm install
 
       - name: Run price update script
-        # নিচের লাইনে আপনার জাভাস্ক্রিপ্ট ফাইলের সঠিক নামটি দিন
-        run: node scripts/create-price-update.js
+        # ====> আপনার জাভাস্ক্রিপ্ট ফাইলের সঠিক নামটি এখানে দেওয়া হয়েছে <====
+        run: node scripts/update-prices.js
         env:
           FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
           FIREBASE_DATABASE_URL: "https://amar-bazar-dor-default-rtdb.firebaseio.com"
