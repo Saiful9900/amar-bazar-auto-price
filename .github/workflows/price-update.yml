@@ -1,0 +1,23 @@
+name: Automatic Daily Price Update
+on:
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+jobs:
+  update-html-prices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Run Price Update Script
+        run: node scripts/update-prices.js
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git diff --staged --quiet || (git commit -m "Automated Price Update" && git push)
