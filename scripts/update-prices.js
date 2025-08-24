@@ -5,9 +5,8 @@ const admin = require('firebase-admin');
 const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
 const databaseURL = process.env.FIREBASE_DATABASE_URL;
 
-// প্রয়োজনীয় তথ্য আছে কিনা তা পরীক্ষা করা হচ্ছে
 if (!serviceAccountKey || !databaseURL) {
-  console.error('Firebase SERVICE ACCOUNT KEY বা DATABASE URL পাওয়া যায়নি। GitHub Actions Workflow ফাইলটি চেক করুন।');
+  console.error('Firebase SERVICE ACCOUNT KEY বা DATABASE URL পাওয়া যায়নি।');
   process.exit(1);
 }
 
@@ -20,50 +19,61 @@ try {
   console.log('Firebase Admin SDK সফলভাবে ইনিশিয়ালাইজ হয়েছে।');
 
   const db = admin.database();
-  // 'products' পাথে সব পণ্যের দাম সেভ হবে
-  const ref = db.ref('products');
+  const ref = db.ref('products'); // ডাটাবেজের 'products' শাখা
 
-  // আপনার পণ্যের তালিকা
-  const samplePrices = {
-    'মিনিকেট চাল': { lowest: 72, highest: 80 },
-    'মসুর ডাল': { lowest: 135, highest: 145 },
-    'সয়াবিন তেল': { lowest: 160, highest: 165 },
-    'আলু': { lowest: 45, highest: 55 },
-    'পেঁয়াজ': { lowest: 85, highest: 95 },
-    'গরুর মাংস': { lowest: 780, highest: 800 },
-    'খাসির মাংস': { lowest: 1100, highest: 1180 },
-    'মুরগির মাংস (ব্রয়লার)': { lowest: 210, highest: 230 },
-    'মুরগির ডিম': { lowest: 48, highest: 52 },
-    'ইলিশ মাছ': { lowest: 1300, highest: 1850 },
-    'রুই মাছ': { lowest: 380, highest: 480 },
-  };
-
-  // প্রতিটি পণ্যের জন্য দাম কিছুটা পরিবর্তন করা হচ্ছে
-  for (const product in samplePrices) {
-    const randomChange = Math.floor(Math.random() * 5) - 2; // -2 থেকে +2 এর মধ্যে পরিবর্তন
-    samplePrices[product].lowest += randomChange;
-    samplePrices[product].highest += randomChange;
-  }
-  
-  const lastUpdated = new Date().toISOString();
-  const dataToUpdate = {
-      prices: samplePrices,
-      lastUpdated: lastUpdated
-  };
-
-  // সম্পূর্ণ নতুন তালিকাটি Firebase-এ পাঠানো হচ্ছে
-  ref.set(dataToUpdate)
-    .then(() => {
-      console.log(`সফলভাবে Firebase এ ${Object.keys(samplePrices).length} টি পণ্যের দাম আপডেট করা হয়েছে।`);
-      console.log('আপডেট হওয়া ডেটা:', JSON.stringify(dataToUpdate, null, 2));
+  // ধাপ ১: প্রথমে Firebase থেকে বর্তমান পণ্যের তালিকা পড়া হচ্ছে
+  ref.once('value', (snapshot) => {
+    const productsData = snapshot.val();
+    
+    // যদি ডাটাবেজে কোনো পণ্য না থাকে, তাহলে কাজটি এখানেই শেষ
+    if (!productsData || !productsData.prices) {
+      console.log('ডাটাবেজে কোনো পণ্য পাওয়া যায়নি। আপডেট করার কিছু নেই।');
       process.exit(0);
-    })
-    .catch((error) => {
-      console.error('Firebase এ ডেটা লিখতে সমস্যা হয়েছে:', error);
-      process.exit(1);
-    });
+      return;
+    }
+
+    const currentPrices = productsData.prices;
+    const updatedPrices = {};
+    let updatedCount = 0;
+
+    // ধাপ ২: প্রতিটি পণ্যের দামে র‍্যান্ডম পরিবর্তন আনা হচ্ছে
+    for (const productName in currentPrices) {
+      const product = currentPrices[productName];
+      // -2 থেকে +2 এর মধ্যে একটি র‍্যান্ডম সংখ্যা তৈরি করা হচ্ছে
+      const randomChange = Math.floor(Math.random() * 5) - 2;
+
+      // পণ্যের অন্যান্য সব তথ্য (unit, image_url ইত্যাদি) অপরিবর্তিত রাখা হচ্ছে
+      updatedPrices[productName] = {
+        ...product, 
+        lowest_price: (product.lowest_price || 0) + randomChange,
+        highest_price: (product.highest_price || 0) + randomChange,
+      };
+      updatedCount++;
+    }
+    
+    const dataToUpdate = {
+        prices: updatedPrices,
+        lastUpdated: new Date().toISOString()
+    };
+
+    // ধাপ ৩: সম্পূর্ণ নতুন তালিকাটি Firebase-এ পাঠানো হচ্ছে
+    // এই পদ্ধতিতে ইউজারদের যোগ করা পণ্য মুছে যাবে না, কারণ আমরা শুরুতেই সেগুলো পড়ে নিয়েছি।
+    ref.set(dataToUpdate)
+      .then(() => {
+        console.log(`সফলভাবে Firebase এ ${updatedCount} টি পণ্যের দাম আপডেট করা হয়েছে।`);
+        process.exit(0);
+      })
+      .catch((error) => {
+        console.error('Firebase এ ডেটা লিখতে সমস্যা হয়েছে:', error);
+        process.exit(1);
+      });
+
+  }, (errorObject) => {
+    console.error('Firebase থেকে ডেটা পড়তে সমস্যা হয়েছে: ' + errorObject.code);
+    process.exit(1);
+  });
 
 } catch (error) {
   console.error('Firebase ইনিশিয়ালাইজ করতে সমস্যা হয়েছে:', error.message);
   process.exit(1);
-        }
+      }
