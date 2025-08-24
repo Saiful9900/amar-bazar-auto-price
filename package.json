@@ -1,0 +1,12 @@
+{
+  "name": "amar-bazar-auto-price",
+  "version": "1.0.0",
+  "description": "Automatic price update script",
+  "main": "scripts/update-prices.js",
+  "scripts": {
+    "start": "node scripts/update-prices.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^11.11.1"
+  }
+}
