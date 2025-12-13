@@ -1,29 +1,29 @@
-name: Automatic Daily Price Update
+name: Daily Price Update
 
 on:
-  workflow_dispatch: # ম্যানুয়ালি চালানোর জন্য
   schedule:
-    - cron: '0 0 * * *' # প্রতিদিন মধ্যরাতে স্বয়ংক্রিয়ভাবে চালানোর জন্য (UTC সময় অনুযায়ী)
+    # প্রতি ৮ ঘণ্টা পর পর রান হবে (UTC সময় অনুযায়ী)
+    - cron: '0 */8 * * *'
+  # ম্যানুয়ালি টেস্ট করার জন্য বাটন চালু রাখা হলো
+  workflow_dispatch:
 
 jobs:
-  update-price:
+  update-prices:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
 
-      - name: Install dependencies
-        run: npm install
+    - name: Install dependencies
+      run: npm install
 
-      - name: Run price update script
-        # ====> আপনার জাভাস্ক্রিপ্ট ফাইলের সঠিক নামটি এখানে দেওয়া হয়েছে <====
-        run: node scripts/update-prices.js
-        env:
-          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
-          FIREBASE_DATABASE_URL: "https://amar-bazar-dor-default-rtdb.firebaseio.com"
+    - name: Run update script
+      run: node update-prices.js
+      env:
+        FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
