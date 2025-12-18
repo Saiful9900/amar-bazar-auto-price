@@ -20,26 +20,42 @@ async function updatePrices() {
     }
 
     const updates = {};
-    
+    const currentTime = new Date().toISOString(); // দাম পরিবর্তনের সঠিক সময় (ISO Format)
+
     snapshot.forEach((childSnapshot) => {
       const product = childSnapshot.val();
       const key = childSnapshot.key;
       
-      // শুধুমাত্র 'active' স্ট্যাটাসের পণ্যগুলোর দাম পরিবর্তন হবে
+      // শুধুমাত্র 'active' পণ্যের দাম পরিবর্তন হবে
       if (product.status === 'active') {
-          // বর্তমান দাম নেওয়া হচ্ছে। parseFloat ব্যবহার করা হয়েছে যাতে টেক্সট থাকলেও কাজ করে।
+          
+          // ১. বর্তমান দাম নেওয়া হচ্ছে
           let currentLow = parseFloat(product.lowest_price) || 0;
           let currentHigh = parseFloat(product.highest_price) || 0;
 
-          // যদি কোনো কারণে দাম ০ থাকে, তবে ডিফল্ট একটা দাম সেট হবে
-          if (currentLow <= 0) currentLow = 50;
-          if (currentHigh <= 0) currentHigh = 60;
+          // ২. বেস প্রাইস লজিক (দাম নিয়ন্ত্রণ করার জন্য)
+          // যদি ডাটাবেসে base_price না থাকে, তবে বর্তমান দামকেই বেস ধরা হবে
+          let baseLow = parseFloat(product.base_price_low) || currentLow;
+          let baseHigh = parseFloat(product.base_price_high) || currentHigh;
 
-          // দামের পরিবর্তন (৫ থেকে ১৫ টাকার মধ্যে)
-          const changeAmount = Math.floor(Math.random() * 11) + 5; 
+          // ৩. দামের পরিবর্তন (২ থেকে ৫ টাকার মধ্যে - যা বাজারের জন্য স্বাভাবিক)
+          const changeAmount = Math.floor(Math.random() * 4) + 2; 
           
-          // সিদ্ধান্ত নেওয়া: দাম বাড়বে নাকি কমবে? (৫০% চান্স)
-          const isIncrease = Math.random() < 0.5;
+          // ৪. দাম নিয়ন্ত্রণের স্মার্ট লজিক:
+          let isIncrease;
+          
+          // দাম যদি বেস প্রাইস থেকে ১০ টাকা বেড়ে যায়, তবে কমানোর সিদ্ধান্ত নেবে
+          if (currentLow > (baseLow + 10)) {
+              isIncrease = false;
+          } 
+          // দাম যদি বেস প্রাইস থেকে ১০ টাকা কমে যায়, তবে বাড়ানোর সিদ্ধান্ত নেবে
+          else if (currentLow < (baseLow - 10)) {
+              isIncrease = true;
+          } 
+          // মাঝামাঝি থাকলে র্যান্ডমলি বাড়বে বা কমবে
+          else {
+              isIncrease = Math.random() < 0.5;
+          }
 
           let newLow, newHigh;
 
@@ -51,27 +67,38 @@ async function updatePrices() {
               newHigh = currentHigh - changeAmount;
           }
 
-          // সেফটি চেক: দাম যেন কখনো অবাস্তব (যেমন ১০ টাকার নিচে) না নামে
-          if (newLow < 20) newLow = 20;
+          // ৫. অতিরিক্ত সুরক্ষা: দাম যেন আসল দাম (Base Price) থেকে ২০ টাকার বেশি পার্থক্য না হয়
+          if (newLow > (baseLow + 20)) newLow = baseLow + 15;
+          if (newLow < (baseLow - 20)) newLow = baseLow - 15;
           
-          // সর্বোচ্চ দাম যেন সবসময় সর্বনিম্ন দামের চেয়ে অন্তত ৫ টাকা বেশি থাকে
+          // ৬. যদি কোনো পণ্যের দাম আপনার স্ক্রিনশটের মতো ভুলবশত অনেক বেশি (যেমন ১০০০+) হয়ে থাকে, 
+          // তাকে স্বয়ংক্রিয়ভাবে ১০০ টাকার নিচে নিয়ে আসবে (সুরক্ষার জন্য)
+          if (newLow > 1000) newLow = 60; 
+
+          // ৭. সর্বোচ্চ দাম সর্বনিম্ন দামের চেয়ে ৫-১০ টাকা বেশি রাখা
           if (newHigh <= newLow) newHigh = newLow + 5;
 
-          // আপডেটের জন্য ডাটা প্রস্তুত করা (Math.round দিয়ে পূর্ণসংখ্যা করা হয়েছে)
+          // ৮. ডাটাবেস আপডেটের জন্য ডাটা প্রস্তুত করা
           updates[`/products/${key}/lowest_price`] = Math.round(newLow);
           updates[`/products/${key}/highest_price`] = Math.round(newHigh);
           
-          // সময় আপডেট (ISO ফরম্যাটে) - এটি ইউজার অ্যাপে 'কতক্ষণ আগে' দেখাবে
-          updates[`/products/${key}/effective_date`] = new Date().toISOString();
+          // সময় আপডেট: এটি আপনার অ্যাপে "কতক্ষণ আগে" দেখাবে
+          updates[`/products/${key}/effective_date`] = currentTime;
+
+          // যদি আগে বেস প্রাইস না থেকে থাকে, তবে প্রথমবার এটি ডাটাবেসে সেভ হবে
+          if (!product.base_price_low) {
+              updates[`/products/${key}/base_price_low`] = Math.round(currentLow > 1000 ? 50 : currentLow);
+              updates[`/products/${key}/base_price_high`] = Math.round(currentHigh > 1000 ? 60 : currentHigh);
+          }
       }
     });
 
-    // ডাটাবেসে আপডেট পাঠানো
+    // ডাটাবেসে দাম এবং সময় একসাথে আপডেট পাঠানো
     if (Object.keys(updates).length > 0) {
         await db.ref().update(updates);
-        console.log("Successfully updated prices (Realistic range 5-15 TK).");
+        console.log("দাম এবং সময় সফলভাবে আপডেট হয়েছে।");
     } else {
-        console.log("No active products to update.");
+        console.log("আপডেট করার মতো কোনো একটিভ পণ্য পাওয়া যায়নি।");
     }
     
     process.exit(0);
