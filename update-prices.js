@@ -49,39 +49,38 @@ async function updatePrices() {
       const product = childSnapshot.val();
       const key = childSnapshot.key;
       
-      // শুধুমাত্র 'active' পণ্যের দাম পরিবর্তন হবে
-      if (product.status === 'active') {
+      // লজিক আপডেট: পণ্যটি অবশ্যই 'active' হতে হবে এবং 'auto' মোডে থাকতে হবে
+      // যদি এডমিন 'Manual' সেট করে থাকেন, তবে এই স্ক্রিপ্ট দাম পরিবর্তন করবে না
+      if (product.status === 'active' && product.priceType === 'auto') {
           
           let currentLow = parseFloat(product.lowest_price) || 0;
-          let currentHigh = parseFloat(product.highest_price) || 0;
-
-          // বেস প্রাইস: যদি আগে সেট করা না থাকে, বর্তমান দামকেই বেস ধরা হবে
-          // এটি নিশ্চিত করে যে দাম আকাশছোঁয়া হবে না বা অনেক কমে যাবে না
+          
+          // Base Price চেক করা (এডমিন যেটা সেট করেছেন)
           let baseLow = parseFloat(product.base_price_low);
-          if (!baseLow) baseLow = currentLow; 
+          
+          // সেফটি: যদি কোনো কারণে Base Price না থাকে, বর্তমান দামকেই বেস ধরা হবে
+          if (!baseLow || baseLow === 0) baseLow = currentLow; 
 
-          // --- লজিক শুরু ---
+          // --- দাম পরিবর্তনের লজিক (আপনার বিদ্যমান লজিক অপরিবর্তিত রাখা হয়েছে) ---
 
           // ১. পরিবর্তনের পরিমাণ নির্ধারণ (Fluctuation Amount)
-          // ৮০% সময় দাম ১-৩ টাকা কমবে/বাড়বে (স্বাভাবিক বাজার)
-          // ২০% সময় দাম ৪-৮ টাকা কমবে/বাড়বে (হঠাৎ পরিবর্তন)
           const isStableChange = Math.random() > 0.2; 
           const changeAmount = isStableChange 
-              ? Math.floor(Math.random() * 3) + 1  // ১ থেকে ৩ টাকা
-              : Math.floor(Math.random() * 5) + 4; // ৪ থেকে ৮ টাকা
+              ? Math.floor(Math.random() * 3) + 1  // ১ থেকে ৩ টাকা (স্বাভাবিক)
+              : Math.floor(Math.random() * 5) + 4; // ৪ থেকে ৮ টাকা (অস্বাভাবিক)
 
-          // ২. বাড়া বা কমানোর সিদ্ধান্ত (Direction)
+          // ২. বাড়া বা কমানোর সিদ্ধান্ত (Smart Direction based on Base Price)
           let isIncrease;
 
-          // যদি বর্তমান দাম বেস প্রাইসের চেয়ে ১৫ টাকা বেশি হয়ে যায়, তবে দাম কমানো হবে (Force Down)
+          // লজিক: যদি বর্তমান দাম Base Price থেকে ১৫ টাকা বেশি হয়ে যায়, তবে দাম কমাবে
           if (currentLow > (baseLow + 15)) {
-              isIncrease = false;
+              isIncrease = false; // Force Down
           }
-          // যদি বর্তমান দাম বেস প্রাইসের চেয়ে ১৫ টাকা কমে যায়, তবে দাম বাড়ানো হবে (Force Up)
+          // লজিক: যদি বর্তমান দাম Base Price থেকে ১৫ টাকা কমে যায়, তবে দাম বাড়াবে
           else if (currentLow < (baseLow - 15)) {
-              isIncrease = true;
+              isIncrease = true; // Force Up
           }
-          // অন্যথায় রেন্ডমলি বাড়বে বা কমবে (৫০-৫০ চান্স)
+          // অন্যথায় রেন্ডমলি বাড়বে বা কমবে
           else {
               isIncrease = Math.random() < 0.5;
           }
@@ -90,11 +89,10 @@ async function updatePrices() {
           let newLow = isIncrease ? currentLow + changeAmount : currentLow - changeAmount;
 
           // ৪. সেফটি চেক (Safety Net)
-          // দাম যেন কখনো ১০ টাকার নিচে না নামে (মিনিমাম লিমিট)
+          // দাম যেন কখনো ১০ টাকার নিচে না নামে
           if (newLow < 10) newLow = 10;
           
-          // সর্বোচ্চ দাম (High Price) সেট করা
-          // লো প্রাইস থেকে সবসময় ৫ থেকে ১২ টাকা বেশি থাকবে
+          // সর্বোচ্চ দাম (High Price) সেট করা (লো প্রাইস থেকে ৫-১২ টাকা বেশি)
           let spread = Math.floor(Math.random() * 8) + 5; 
           let newHigh = newLow + spread;
 
@@ -103,9 +101,10 @@ async function updatePrices() {
           updates[`/products/${key}/highest_price`] = Math.round(newHigh);
           updates[`/products/${key}/effective_date`] = currentTimeISO;
 
-          // বেস প্রাইস না থাকলে সেট করে দেওয়া
+          // যদি এই পণ্যের base_price না থাকে, তবে বর্তমান দামটিকেই বেস হিসেবে সেট করে দিবে (ভবিষ্যতের জন্য)
           if (!product.base_price_low) {
               updates[`/products/${key}/base_price_low`] = Math.round(currentLow);
+              updates[`/products/${key}/base_price_high`] = Math.round(currentLow + spread);
           }
       }
     });
@@ -120,7 +119,7 @@ async function updatePrices() {
         await db.ref().update(updates);
         console.log(`Prices updated successfully based on ${scheduleHours}h schedule.`);
     } else {
-        console.log("No active products found to update.");
+        console.log("No active 'auto' pricing products found to update.");
     }
     
     process.exit(0);
